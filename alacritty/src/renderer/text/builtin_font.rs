@@ -30,6 +30,8 @@ pub fn builtin_glyph(
     let mut glyph = match character {
         // Box drawing characters and block elements.
         '\u{2500}'..='\u{259f}' => box_drawing(character, metrics, offset),
+        // Some symbols for Legacy Computing.
+        '\u{1fb7c}'..='\u{1fb7f}' => legacy_drawing(character, metrics, offset),
         // Powerline symbols: '','','',''
         POWERLINE_TRIANGLE_LTR..=POWERLINE_ARROW_RTL => {
             powerline_drawing(character, metrics, offset)
@@ -499,6 +501,45 @@ fn box_drawing(character: char, metrics: &Metrics, offset: &Delta<i8>) -> Raster
         height: height as i32,
         width: width as i32,
         buffer,
+        advance: (width as i32, height as i32),
+    }
+}
+
+fn legacy_drawing(character: char, metrics: &Metrics, offset: &Delta<i8>) -> RasterizedGlyph {
+    // Ensure that width and height is at least one.
+    let height = (metrics.line_height as i32 + offset.y as i32).max(1) as usize;
+    let width = (metrics.average_advance as i32 + offset.x as i32).max(1) as usize;
+
+    let top = height as i32 + metrics.descent as i32;
+
+    let mut canvas = Canvas::new(width, height);
+
+    let height = height as f32;
+    let width = width as f32;
+    let rect_height = height / 8.;
+    let rect_width = width / 8.;
+
+    // bottom or top line
+    if character == '\u{1fb7c}' || character == '\u{1fb7f}' {
+        canvas.draw_rect(0.0, (height - rect_height).round(), width, rect_height.round().max(1.), COLOR_FILL);
+    } else if character == '\u{1fb7d}' || character == '\u{1fb7e}' {
+        canvas.draw_rect(0.0, 0.0, width, rect_height.round().max(1.), COLOR_FILL);
+    }
+
+    // left or right line
+    if character == '\u{1fb7c}' || character == '\u{1fb7d}' {
+        canvas.draw_rect(0.0, 0.0, rect_width.round().max(1.), height, COLOR_FILL);
+    } else if character == '\u{1fb7e}' || character == '\u{1fb7f}' {
+        canvas.draw_rect((width - rect_width).round(), 0.0, rect_width.round().max(1.), height, COLOR_FILL);
+    }
+
+    RasterizedGlyph {
+        character,
+        top,
+        left: 0,
+        height: height as i32,
+        width: width as i32,
+        buffer: BitmapBuffer::Rgb(canvas.into_raw()),
         advance: (width as i32, height as i32),
     }
 }
