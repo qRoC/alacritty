@@ -35,9 +35,9 @@ use alacritty_terminal::term::{
 use alacritty_terminal::vte::ansi::{CursorShape, NamedColor};
 
 use crate::config::font::Font;
-use crate::config::window::Dimensions;
 #[cfg(not(windows))]
 use crate::config::window::StartupMode;
+use crate::config::window::{Dimensions, HorizontalAlign, VerticalAlign};
 use crate::config::UiConfig;
 use crate::display::bell::VisualBell;
 use crate::display::color::{List, Rgb};
@@ -152,11 +152,17 @@ pub struct SizeInfo<T = f32> {
     /// Height of individual cell.
     cell_height: T,
 
-    /// Horizontal window padding.
-    padding_x: T,
+    /// Left window padding.
+    padding_left: T,
 
-    /// Vertical window padding.
-    padding_y: T,
+    /// Right window padding.
+    padding_right: T,
+
+    /// Top window padding.
+    padding_top: T,
+
+    /// Bottom window padding.
+    padding_bottom: T,
 
     /// Number of lines in the viewport.
     screen_lines: usize,
@@ -172,8 +178,10 @@ impl From<SizeInfo<f32>> for SizeInfo<u32> {
             height: size_info.height as u32,
             cell_width: size_info.cell_width as u32,
             cell_height: size_info.cell_height as u32,
-            padding_x: size_info.padding_x as u32,
-            padding_y: size_info.padding_y as u32,
+            padding_left: size_info.padding_left as u32,
+            padding_right: size_info.padding_right as u32,
+            padding_top: size_info.padding_top as u32,
+            padding_bottom: size_info.padding_bottom as u32,
             screen_lines: size_info.screen_lines,
             columns: size_info.screen_lines,
         }
@@ -212,37 +220,31 @@ impl<T: Clone + Copy> SizeInfo<T> {
         self.cell_height
     }
 
-    #[inline]
-    pub fn padding_x(&self) -> T {
-        self.padding_x
+    pub fn padding_left(&self) -> T {
+        self.padding_left
     }
 
     #[inline]
-    pub fn padding_y(&self) -> T {
-        self.padding_y
+    pub fn padding_right(&self) -> T {
+        self.padding_right
+    }
+
+    pub fn padding_top(&self) -> T {
+        self.padding_top
+    }
+
+    #[inline]
+    pub fn padding_bottom(&self) -> T {
+        self.padding_bottom
     }
 }
 
 impl SizeInfo<f32> {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        width: f32,
-        height: f32,
-        cell_width: f32,
-        cell_height: f32,
-        mut padding_x: f32,
-        mut padding_y: f32,
-        dynamic_padding: bool,
-    ) -> SizeInfo {
-        if dynamic_padding {
-            padding_x = Self::dynamic_padding(padding_x.floor(), width, cell_width);
-            padding_y = Self::dynamic_padding(padding_y.floor(), height, cell_height);
-        }
-
-        let lines = (height - 2. * padding_y) / cell_height;
+    pub fn new(width: f32, height: f32, cell_width: f32, cell_height: f32) -> SizeInfo {
+        let lines = height / cell_height;
         let screen_lines = cmp::max(lines as usize, MIN_SCREEN_LINES);
 
-        let columns = (width - 2. * padding_x) / cell_width;
+        let columns = width / cell_width;
         let columns = cmp::max(columns as usize, MIN_COLUMNS);
 
         SizeInfo {
@@ -250,8 +252,73 @@ impl SizeInfo<f32> {
             height,
             cell_width,
             cell_height,
-            padding_x: padding_x.floor(),
-            padding_y: padding_y.floor(),
+            padding_left: 0.,
+            padding_right: 0.,
+            padding_top: 0.,
+            padding_bottom: 0.,
+            screen_lines,
+            columns,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_padding(
+        width: f32,
+        height: f32,
+        cell_width: f32,
+        cell_height: f32,
+        padding_x: f32,
+        padding_y: f32,
+        valign: VerticalAlign,
+        halign: HorizontalAlign,
+    ) -> SizeInfo {
+        let (padding_top, padding_bottom) = match valign {
+            VerticalAlign::Top => (0., padding_y),
+            VerticalAlign::Middle => {
+                let padding = padding_y.floor();
+                let padding = padding + ((height - 2. * padding) % cell_height) / 2.;
+
+                (padding, padding)
+            },
+            VerticalAlign::Bottom => {
+                let padding = padding_y.floor();
+                let padding = padding + ((height - padding) % cell_height);
+
+                (padding, 0.0)
+            },
+        };
+
+        let (padding_left, padding_right) = match halign {
+            HorizontalAlign::Left => (0., padding_x),
+            HorizontalAlign::Center => {
+                let padding = padding_x.floor();
+                let padding = padding + ((width - 2. * padding) % cell_width) / 2.;
+
+                (padding, padding)
+            },
+            HorizontalAlign::Right => {
+                let padding = padding_x.floor();
+                let padding = padding + ((width - padding) % cell_width);
+
+                (padding, 0.0)
+            },
+        };
+
+        let lines = (height - padding_top - padding_bottom) / cell_height;
+        let screen_lines = cmp::max(lines as usize, MIN_SCREEN_LINES);
+
+        let columns = (width - padding_left - padding_right) / cell_width;
+        let columns = cmp::max(columns as usize, MIN_COLUMNS);
+
+        SizeInfo {
+            width,
+            height,
+            cell_width,
+            cell_height,
+            padding_left: padding_left.floor(),
+            padding_right: padding_right.floor(),
+            padding_top: padding_top.floor(),
+            padding_bottom: padding_bottom.floor(),
             screen_lines,
             columns,
         }
@@ -267,16 +334,10 @@ impl SizeInfo<f32> {
     /// The padding, message bar or search are not counted as part of the grid.
     #[inline]
     pub fn contains_point(&self, x: usize, y: usize) -> bool {
-        x <= (self.padding_x + self.columns as f32 * self.cell_width) as usize
-            && x > self.padding_x as usize
-            && y <= (self.padding_y + self.screen_lines as f32 * self.cell_height) as usize
-            && y > self.padding_y as usize
-    }
-
-    /// Calculate padding to spread it evenly around the terminal content.
-    #[inline]
-    fn dynamic_padding(padding: f32, dimension: f32, cell_dimension: f32) -> f32 {
-        padding + ((dimension - 2. * padding) % cell_dimension) / 2.
+        x <= (self.padding_left + self.columns as f32 * self.cell_width) as usize
+            && x > self.padding_left as usize
+            && y <= (self.padding_top + self.screen_lines as f32 * self.cell_height) as usize
+            && y > self.padding_top as usize
     }
 }
 
@@ -432,21 +493,29 @@ impl Display {
         });
 
         let padding = config.window.padding(window.scale_factor as f32);
+        let align = config.window.align();
         let viewport_size = window.inner_size();
 
         // Create new size with at least one column and row.
-        let size_info = SizeInfo::new(
+        let size_info = SizeInfo::new_with_padding(
             viewport_size.width as f32,
             viewport_size.height as f32,
             cell_width,
             cell_height,
             padding.0,
             padding.1,
-            config.window.dynamic_padding && config.window.dimensions().is_none(),
+            align.0,
+            align.1,
         );
 
         info!("Cell size: {} x {}", cell_width, cell_height);
-        info!("Padding: {} x {}", size_info.padding_x(), size_info.padding_y());
+        info!(
+            "Padding: {} {} {} {}",
+            size_info.padding_top(),
+            size_info.padding_right(),
+            size_info.padding_bottom(),
+            size_info.padding_left()
+        );
         info!("Width: {}, Height: {}", size_info.width(), size_info.height());
 
         // Update OpenGL projection.
@@ -630,15 +699,17 @@ impl Display {
         }
 
         let padding = config.window.padding(self.window.scale_factor as f32);
+        let align = config.window.align();
 
-        let mut new_size = SizeInfo::new(
+        let mut new_size = SizeInfo::new_with_padding(
             width,
             height,
             cell_width,
             cell_height,
             padding.0,
             padding.1,
-            config.window.dynamic_padding,
+            align.0,
+            align.1,
         );
 
         // Update number of column/lines in the viewport.
@@ -705,7 +776,13 @@ impl Display {
 
         self.renderer.resize(&self.size_info);
 
-        info!("Padding: {} x {}", self.size_info.padding_x(), self.size_info.padding_y());
+        info!(
+            "Padding: {} {} {} {}",
+            self.size_info.padding_top(),
+            self.size_info.padding_right(),
+            self.size_info.padding_bottom(),
+            self.size_info.padding_left()
+        );
         info!("Width: {}, Height: {}", self.size_info.width(), self.size_info.height());
     }
 
@@ -915,7 +992,7 @@ impl Display {
 
             // Create a new rectangle for the background.
             let start_line = size_info.screen_lines() + search_offset;
-            let y = size_info.cell_height().mul_add(start_line as f32, size_info.padding_y());
+            let y = size_info.cell_height().mul_add(start_line as f32, size_info.padding_top());
 
             let bg = match message.ty() {
                 MessageType::Error => config.colors.normal.red,

@@ -35,7 +35,13 @@ pub struct WindowConfig {
     pub decorations_theme_variant: Option<Theme>,
 
     /// Spread out additional padding evenly.
+    #[config(deprecated = "use window.valign and window.halign instead")]
     pub dynamic_padding: bool,
+
+    /// Vertical align for terminal content.
+    pub valign: VerticalAlign,
+    /// Horizontal align for terminal content.
+    pub halign: HorizontalAlign,
 
     /// Use dynamic title.
     pub dynamic_title: bool,
@@ -78,6 +84,8 @@ impl Default for WindowConfig {
             decorations: Default::default(),
             startup_mode: Default::default(),
             dynamic_padding: Default::default(),
+            valign: Default::default(),
+            halign: Default::default(),
             resize_increments: Default::default(),
             decorations_theme_variant: Default::default(),
             #[cfg(target_os = "macos")]
@@ -124,6 +132,18 @@ impl WindowConfig {
         let padding_x = (f32::from(self.padding.x) * scale_factor).floor();
         let padding_y = (f32::from(self.padding.y) * scale_factor).floor();
         (padding_x, padding_y)
+    }
+
+    #[inline]
+    pub fn align(&self) -> (VerticalAlign, HorizontalAlign) {
+        if self.valign == Default::default()
+            && self.halign == Default::default()
+            && self.dynamic_padding
+        {
+            return (VerticalAlign::Middle, HorizontalAlign::Center);
+        }
+
+        (self.valign, self.halign)
     }
 
     #[inline]
@@ -185,6 +205,22 @@ pub enum Decorations {
     #[cfg(target_os = "macos")]
     Buttonless,
     None,
+}
+
+#[derive(ConfigDeserialize, Default, Debug, Copy, Clone, PartialEq, Eq)]
+pub enum VerticalAlign {
+    #[default]
+    Top,
+    Middle,
+    Bottom,
+}
+
+#[derive(ConfigDeserialize, Default, Debug, Copy, Clone, PartialEq, Eq)]
+pub enum HorizontalAlign {
+    #[default]
+    Left,
+    Center,
+    Right,
 }
 
 /// Window Dimensions.
