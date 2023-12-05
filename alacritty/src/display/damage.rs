@@ -297,16 +297,8 @@ mod tests {
         let cell_size = 4;
         let bound = 100;
 
-        let size_info: SizeInfo<u32> = SizeInfo::new(
-            bound as f32,
-            bound as f32,
-            cell_size as f32,
-            cell_size as f32,
-            2.,
-            2.,
-            true,
-        )
-        .into();
+        let size_info: SizeInfo<u32> =
+            SizeInfo::new(bound as f32, bound as f32, cell_size as f32, cell_size as f32).into();
 
         // Test min clamping.
         let rect = Rect::new(0, 0, rect_side, rect_side);
