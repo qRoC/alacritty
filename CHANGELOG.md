@@ -27,6 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `window.blur` config option to request blur for transparent windows
 - `--option` argument for `alacritty msg create-window`
 - Support for `DECRQM`/`DECRPM` escape sequences
+- Support for kitty's keyboard protocol
 
 ### Changed
 
@@ -49,6 +50,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
     if no exact binding (i.e. one with `Shift`) is found.
 - Use built-in font for powerline symbols from `U+E0B0` to `U+E0B3`
 - Default `bell.animation` is now `Linear`
+- `IncreaseFontSize/DecreaseFontSize` step is now 1px
+- `font.size` precision was raised to 6 floating point digits
 
 ### Fixed
 
@@ -74,6 +77,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Vi cursor position not redrawn on PageUp/PageDown without scrollback
 - Cursor not updating when blinking and viewport is scrolled
 - Failure to start with recent version of mesa's i915 driver
+- Error when using `chars` inside the mouse bindings
 
 ### Removed
 
