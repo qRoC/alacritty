@@ -270,12 +270,14 @@ impl Renderer {
     }
 
     /// Fill the window with `color` and `alpha`.
-    pub fn clear(&self, color: Rgb, alpha: f32) {
+    pub fn clear(&self, _color: Rgb, alpha: f32) {
         unsafe {
             gl::ClearColor(
-                (f32::from(color.r) / 255.0).min(1.0) * alpha,
-                (f32::from(color.g) / 255.0).min(1.0) * alpha,
-                (f32::from(color.b) / 255.0).min(1.0) * alpha,
+                // use black
+                0.0, 0.0, 0.0,
+                // (f32::from(color.r) / 255.0).min(1.0) * alpha,
+                // (f32::from(color.g) / 255.0).min(1.0) * alpha,
+                // (f32::from(color.b) / 255.0).min(1.0) * alpha,
                 alpha,
             );
             gl::Clear(gl::COLOR_BUFFER_BIT);
