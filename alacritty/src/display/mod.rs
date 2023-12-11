@@ -240,6 +240,7 @@ impl<T: Clone + Copy> SizeInfo<T> {
 }
 
 impl SizeInfo<f32> {
+    #[cfg(test)]
     pub fn new(width: f32, height: f32, cell_width: f32, cell_height: f32) -> SizeInfo {
         let lines = height / cell_height;
         let screen_lines = cmp::max(lines as usize, MIN_SCREEN_LINES);
