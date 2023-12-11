@@ -7,6 +7,7 @@ use crossfont::{
 };
 use log::{error, info};
 use unicode_width::UnicodeWidthChar;
+use winit::dpi::PhysicalSize;
 
 use crate::config::font::{Font, FontDescription};
 use crate::config::ui_config::Delta;
@@ -66,7 +67,10 @@ pub struct GlyphCache {
     pub font_size: crossfont::Size,
 
     /// Font offset.
-    font_offset: Delta<i8>,
+    pub font_offset: Delta<i8>,
+
+    /// Cell size.
+    pub cell_size: Delta<f32>,
 
     /// Glyph offset.
     glyph_offset: Delta<i8>,
@@ -79,7 +83,11 @@ pub struct GlyphCache {
 }
 
 impl GlyphCache {
-    pub fn new(mut rasterizer: Rasterizer, font: &Font) -> Result<GlyphCache, crossfont::Error> {
+    pub fn new(
+        mut rasterizer: Rasterizer,
+        viewport_size: &PhysicalSize<u32>,
+        font: &Font,
+    ) -> Result<GlyphCache, crossfont::Error> {
         let (regular, bold, italic, bold_italic) = Self::compute_font_keys(font, &mut rasterizer)?;
 
         // Need to load at least one glyph for the face before calling metrics.
@@ -89,6 +97,8 @@ impl GlyphCache {
 
         let metrics = rasterizer.metrics(regular, font.size())?;
 
+        let (font_offset, cell_size) = Self::offset_and_cell_size(viewport_size, &metrics);
+
         Ok(Self {
             cache: Default::default(),
             rasterizer,
@@ -97,7 +107,8 @@ impl GlyphCache {
             bold_key: bold,
             italic_key: italic,
             bold_italic_key: bold_italic,
-            font_offset: font.offset,
+            font_offset,
+            cell_size,
             glyph_offset: font.glyph_offset,
             metrics,
             builtin_box_drawing: font.builtin_box_drawing,
@@ -275,11 +286,11 @@ impl GlyphCache {
     ///
     /// NOTE: To reload the renderers's fonts [`Self::reset_glyph_cache`] should be called
     /// afterwards.
-    pub fn update_font_size(&mut self, font: &Font) -> Result<(), crossfont::Error> {
-        // Update dpi scaling.
-        self.font_offset = font.offset;
-        self.glyph_offset = font.glyph_offset;
-
+    pub fn update_font_size(
+        &mut self,
+        viewport_size: &PhysicalSize<u32>,
+        font: &Font,
+    ) -> Result<(), crossfont::Error> {
         // Recompute font keys.
         let (regular, bold, italic, bold_italic) =
             Self::compute_font_keys(font, &mut self.rasterizer)?;
@@ -290,6 +301,13 @@ impl GlyphCache {
             size: font.size(),
         })?;
         let metrics = self.rasterizer.metrics(regular, font.size())?;
+
+        let (font_offset, cell_size) = Self::offset_and_cell_size(viewport_size, &metrics);
+
+        // Update dpi scaling.
+        self.font_offset = font_offset;
+        self.cell_size = cell_size;
+        self.glyph_offset = font.glyph_offset;
 
         info!("Font size changed to {:?} px", font.size().as_px());
 
@@ -314,5 +332,35 @@ impl GlyphCache {
         self.load_glyphs_for_font(self.bold_key, loader);
         self.load_glyphs_for_font(self.italic_key, loader);
         self.load_glyphs_for_font(self.bold_italic_key, loader);
+    }
+
+    fn offset_and_cell_size(
+        viewport_size: &PhysicalSize<u32>,
+        metrics: &crossfont::Metrics,
+    ) -> (Delta<i8>, Delta<f32>) {
+        let viewport_size_y = viewport_size.height as f64;
+
+        let mut best_approx_y = (viewport_size_y / metrics.line_height) % 1.0;
+        let mut best_offset_y = 0;
+        // max offset: 3
+        for i in 1..=3 {
+            let current_approx_y = (viewport_size_y / (metrics.line_height + i as f64)) % 1.0;
+            if current_approx_y < best_approx_y {
+                best_approx_y = current_approx_y;
+                best_offset_y = i;
+            }
+        }
+
+        let offset = Delta { x: 0, y: best_offset_y };
+
+        let offset_x = f64::from(offset.x);
+        let offset_y = f64::from(offset.y);
+
+        let cell_size = Delta {
+            x: (metrics.average_advance + offset_x).floor().max(1.) as f32,
+            y: (metrics.line_height + offset_y).floor().max(1.) as f32,
+        };
+
+        (offset, cell_size)
     }
 }

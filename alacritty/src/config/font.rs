@@ -16,9 +16,6 @@ use crate::config::ui_config::Delta;
 /// doesn't provide complete config is Ok.
 #[derive(ConfigDeserialize, Debug, Clone, PartialEq, Eq)]
 pub struct Font {
-    /// Extra spacing per character.
-    pub offset: Delta<i8>,
-
     /// Glyph offset within character cell.
     pub glyph_offset: Delta<i8>,
 
@@ -84,7 +81,6 @@ impl Default for Font {
             use_thin_strokes: Default::default(),
             bold_italic: Default::default(),
             italic: Default::default(),
-            offset: Default::default(),
             normal: Default::default(),
             bold: Default::default(),
             size: Default::default(),

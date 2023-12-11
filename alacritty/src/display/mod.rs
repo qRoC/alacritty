@@ -152,6 +152,12 @@ pub struct SizeInfo<T = f32> {
     /// Height of individual cell.
     cell_height: T,
 
+    /// Width of extra spacing per character.
+    offset_width: i8,
+
+    /// Height of extra spacing per character.
+    offset_height: i8,
+
     /// Left window padding.
     padding_left: T,
 
@@ -178,6 +184,8 @@ impl From<SizeInfo<f32>> for SizeInfo<u32> {
             height: size_info.height as u32,
             cell_width: size_info.cell_width as u32,
             cell_height: size_info.cell_height as u32,
+            offset_width: size_info.offset_width,
+            offset_height: size_info.offset_height,
             padding_left: size_info.padding_left as u32,
             padding_right: size_info.padding_right as u32,
             padding_top: size_info.padding_top as u32,
@@ -220,6 +228,16 @@ impl<T: Clone + Copy> SizeInfo<T> {
         self.cell_height
     }
 
+    #[inline]
+    pub fn offset_width(&self) -> i8 {
+        self.offset_width
+    }
+
+    #[inline]
+    pub fn offset_height(&self) -> i8 {
+        self.offset_height
+    }
+
     pub fn padding_left(&self) -> T {
         self.padding_left
     }
@@ -240,6 +258,7 @@ impl<T: Clone + Copy> SizeInfo<T> {
 }
 
 impl SizeInfo<f32> {
+    #[cfg(test)]
     pub fn new(width: f32, height: f32, cell_width: f32, cell_height: f32) -> SizeInfo {
         let lines = height / cell_height;
         let screen_lines = cmp::max(lines as usize, MIN_SCREEN_LINES);
@@ -252,6 +271,8 @@ impl SizeInfo<f32> {
             height,
             cell_width,
             cell_height,
+            offset_width: 0,
+            offset_height: 0,
             padding_left: 0.,
             padding_right: 0.,
             padding_top: 0.,
@@ -263,15 +284,20 @@ impl SizeInfo<f32> {
 
     #[allow(clippy::too_many_arguments)]
     pub fn new_with_padding(
-        width: f32,
-        height: f32,
-        cell_width: f32,
-        cell_height: f32,
+        viewport_size: &PhysicalSize<u32>,
+        glyph_cache: &GlyphCache,
         padding_x: f32,
         padding_y: f32,
         valign: VerticalAlign,
         halign: HorizontalAlign,
     ) -> SizeInfo {
+        let height = viewport_size.height as f32;
+        let width = viewport_size.width as f32;
+        let cell_height = glyph_cache.cell_size.y;
+        let cell_width = glyph_cache.cell_size.x;
+        let offset_height = glyph_cache.font_offset.y;
+        let offset_width = glyph_cache.font_offset.x;
+
         let (padding_top, padding_bottom) = match valign {
             VerticalAlign::Top => (0., padding_y),
             VerticalAlign::Middle => {
@@ -315,6 +341,8 @@ impl SizeInfo<f32> {
             height,
             cell_width,
             cell_height,
+            offset_height,
+            offset_width,
             padding_left: padding_left.floor(),
             padding_right: padding_right.floor(),
             padding_top: padding_top.floor(),
@@ -459,29 +487,61 @@ impl Display {
         config: &UiConfig,
         _tabbed: bool,
     ) -> Result<Display, Error> {
-        let raw_window_handle = window.raw_window_handle();
+        #[cfg(target_os = "macos")]
+        match config.window.startup_mode {
+            StartupMode::SimpleFullscreen => {
+                window.set_simple_fullscreen(true);
+            },
+            StartupMode::Optimal => {
+                if let Some(monitor) = window.current_monitor() {
+                    let resolution = monitor.size();
+                    let is_ultra_wide = resolution.width / resolution.height >= 2;
+                    if !is_ultra_wide {
+                        window.set_simple_fullscreen(true);
+                    } else if config.window.dimensions().is_none() {
+                        window.request_inner_size(PhysicalSize {
+                            width: resolution.width / 2,
+                            height: resolution.height,
+                        });
+                    }
+                }
+            },
+            _ => {},
+        }
 
+        let mut inner_size = window.inner_size();
+        let raw_window_handle = window.raw_window_handle();
         let scale_factor = window.scale_factor as f32;
-        let rasterizer = Rasterizer::new()?;
 
         let font_size = config.font.size().scale(scale_factor);
-        debug!("Loading \"{}\" font", &config.font.normal().family);
-        let font = config.font.clone().with_size(font_size);
-        let mut glyph_cache = GlyphCache::new(rasterizer, &font)?;
-
-        let metrics = glyph_cache.font_metrics();
-        let (cell_width, cell_height) = compute_cell_size(config, &metrics);
+        let rasterizer = Rasterizer::new()?;
+        let config_font = config.font.clone().with_size(font_size);
+        let mut glyph_cache = GlyphCache::new(rasterizer, &inner_size, &config_font)?;
 
         // Resize the window to account for the user configured size.
         if let Some(dimensions) = config.window.dimensions() {
-            let size = window_size(config, dimensions, cell_width, cell_height, scale_factor);
-            window.request_inner_size(size);
+            let padding = config.window.padding(scale_factor);
+
+            let grid_width = glyph_cache.cell_size.x * dimensions.columns.max(MIN_COLUMNS) as f32;
+            let grid_height =
+                glyph_cache.cell_size.y * dimensions.lines.max(MIN_SCREEN_LINES) as f32;
+
+            window.request_inner_size(PhysicalSize::new(
+                (padding.0).mul_add(2., grid_width).floor() as u32,
+                (padding.1).mul_add(2., grid_height).floor() as u32,
+            ));
+
+            inner_size = window.inner_size();
+
+            if dimensions.lines != 0 {
+                _ = glyph_cache.update_font_size(&inner_size, &config_font);
+            }
         }
 
         // Create the GL surface to draw into.
         let surface = renderer::platform::create_gl_surface(
             &gl_context,
-            window.inner_size(),
+            inner_size,
             window.raw_window_handle(),
         )?;
 
@@ -499,21 +559,19 @@ impl Display {
 
         let padding = config.window.padding(window.scale_factor as f32);
         let align = config.window.align();
-        let viewport_size = window.inner_size();
 
         // Create new size with at least one column and row.
         let size_info = SizeInfo::new_with_padding(
-            viewport_size.width as f32,
-            viewport_size.height as f32,
-            cell_width,
-            cell_height,
+            &inner_size,
+            &glyph_cache,
             padding.0,
             padding.1,
             align.0,
             align.1,
         );
 
-        info!("Cell size: {} x {}", cell_width, cell_height);
+        info!("Cell size: {} x {}", glyph_cache.cell_size.x, glyph_cache.cell_size.y);
+        info!("Offset: {} x {}", glyph_cache.font_offset.x, glyph_cache.font_offset.y);
         info!(
             "Padding: {} {} {} {}",
             size_info.padding_top(),
@@ -545,21 +603,13 @@ impl Display {
 
         // Set resize increments for the newly created window.
         if config.window.resize_increments {
-            window.set_resize_increments(PhysicalSize::new(cell_width, cell_height));
+            window.set_resize_increments(PhysicalSize::new(
+                glyph_cache.cell_size.x,
+                glyph_cache.cell_size.y,
+            ));
         }
 
         window.set_visible(true);
-
-        #[allow(clippy::single_match)]
-        #[cfg(not(windows))]
-        if !_tabbed {
-            match config.window.startup_mode {
-                #[cfg(target_os = "macos")]
-                StartupMode::SimpleFullscreen => window.set_simple_fullscreen(true),
-                StartupMode::Maximized if !is_wayland => window.set_maximized(true),
-                _ => (),
-            }
-        }
 
         let hint_state = HintState::new(config.hints.alphabet());
 
@@ -636,20 +686,6 @@ impl Display {
         }
     }
 
-    /// Update font size and cell dimensions.
-    ///
-    /// This will return a tuple of the cell width and height.
-    fn update_font_size(
-        glyph_cache: &mut GlyphCache,
-        config: &UiConfig,
-        font: &Font,
-    ) -> (f32, f32) {
-        let _ = glyph_cache.update_font_size(font);
-
-        // Compute new cell sizes.
-        compute_cell_size(config, &glyph_cache.font_metrics())
-    }
-
     /// Reset glyph cache.
     fn reset_glyph_cache(&mut self) {
         let cache = &mut self.glyph_cache;
@@ -684,9 +720,9 @@ impl Display {
 
         // Update font size and cell dimensions.
         if let Some(font) = pending_update.font() {
-            let cell_dimensions = Self::update_font_size(&mut self.glyph_cache, config, font);
-            cell_width = cell_dimensions.0;
-            cell_height = cell_dimensions.1;
+            let _ = self.glyph_cache.update_font_size(&self.window.inner_size(), font);
+            cell_width = self.glyph_cache.cell_size.x;
+            cell_height = self.glyph_cache.cell_size.y;
 
             info!("Cell size: {} x {}", cell_width, cell_height);
 
@@ -705,10 +741,8 @@ impl Display {
         let align = config.window.align();
 
         let mut new_size = SizeInfo::new_with_padding(
-            width,
-            height,
-            cell_width,
-            cell_height,
+            &PhysicalSize::new(width as u32, height as u32),
+            &self.glyph_cache,
             padding.0,
             padding.1,
             align.0,
@@ -779,6 +813,8 @@ impl Display {
 
         self.renderer.resize(&self.size_info);
 
+        info!("Cell size: {} x {}", self.glyph_cache.cell_size.x, self.glyph_cache.cell_size.y);
+        info!("Offset: {} x {}", self.glyph_cache.font_offset.x, self.glyph_cache.font_offset.y);
         info!(
             "Padding: {} {} {} {}",
             self.size_info.padding_top(),
@@ -1618,36 +1654,4 @@ impl FrameTimer {
             next_frame - now
         }
     }
-}
-
-/// Calculate the cell dimensions based on font metrics.
-///
-/// This will return a tuple of the cell width and height.
-#[inline]
-fn compute_cell_size(config: &UiConfig, metrics: &crossfont::Metrics) -> (f32, f32) {
-    let offset_x = f64::from(config.font.offset.x);
-    let offset_y = f64::from(config.font.offset.y);
-    (
-        (metrics.average_advance + offset_x).floor().max(1.) as f32,
-        (metrics.line_height + offset_y).floor().max(1.) as f32,
-    )
-}
-
-/// Calculate the size of the window given padding, terminal dimensions and cell size.
-fn window_size(
-    config: &UiConfig,
-    dimensions: Dimensions,
-    cell_width: f32,
-    cell_height: f32,
-    scale_factor: f32,
-) -> PhysicalSize<u32> {
-    let padding = config.window.padding(scale_factor);
-
-    let grid_width = cell_width * dimensions.columns.max(MIN_COLUMNS) as f32;
-    let grid_height = cell_height * dimensions.lines.max(MIN_SCREEN_LINES) as f32;
-
-    let width = (padding.0).mul_add(2., grid_width).floor();
-    let height = (padding.1).mul_add(2., grid_height).floor();
-
-    PhysicalSize::new(width as u32, height as u32)
 }
