@@ -460,6 +460,28 @@ impl Display {
         config: &UiConfig,
         _tabbed: bool,
     ) -> Result<Display, Error> {
+        #[cfg(target_os = "macos")]
+        match config.window.startup_mode {
+            StartupMode::SimpleFullscreen => {
+                window.set_simple_fullscreen(true);
+            },
+            StartupMode::Optimal => {
+                if let Some(monitor) = window.current_monitor() {
+                    let resolution = monitor.size();
+                    let is_ultra_wide = resolution.width / resolution.height >= 2;
+                    if !is_ultra_wide {
+                        window.set_simple_fullscreen(true);
+                    } else if config.window.dimensions().is_none() {
+                        window.request_inner_size(PhysicalSize {
+                            width: resolution.width / 2,
+                            height: resolution.height,
+                        });
+                    }
+                }
+            },
+            _ => {},
+        }
+
         let raw_window_handle = window.raw_window_handle();
 
         let scale_factor = window.scale_factor as f32;
@@ -550,17 +572,6 @@ impl Display {
         }
 
         window.set_visible(true);
-
-        #[allow(clippy::single_match)]
-        #[cfg(not(windows))]
-        if !_tabbed {
-            match config.window.startup_mode {
-                #[cfg(target_os = "macos")]
-                StartupMode::SimpleFullscreen => window.set_simple_fullscreen(true),
-                StartupMode::Maximized if !is_wayland => window.set_maximized(true),
-                _ => (),
-            }
-        }
 
         let hint_state = HintState::new(config.hints.alphabet());
 

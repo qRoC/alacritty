@@ -190,7 +190,10 @@ impl Default for Identity {
 
 #[derive(ConfigDeserialize, Default, Debug, Copy, Clone, PartialEq, Eq)]
 pub enum StartupMode {
+    #[cfg(target_os = "macos")]
     #[default]
+    Optimal,
+    #[cfg_attr(not(target_os = "macos"), default)]
     Windowed,
     Maximized,
     Fullscreen,
