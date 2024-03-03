@@ -19,6 +19,7 @@ use winit::dpi::PhysicalPosition;
 use winit::event::{
     ElementState, Modifiers, MouseButton, MouseScrollDelta, Touch as TouchEvent, TouchPhase,
 };
+#[cfg(target_os = "macos")]
 use winit::event_loop::EventLoopWindowTarget;
 use winit::keyboard::ModifiersState;
 #[cfg(target_os = "macos")]
@@ -48,7 +49,7 @@ use crate::scheduler::{Scheduler, TimerId, Topic};
 pub mod keyboard;
 
 /// Font size change interval in px.
-pub const FONT_SIZE_STEP: i32 = 1;
+pub const FONT_SIZE_STEP: f32 = 1.;
 
 /// Interval for mouse scrolling during selection outside of the boundaries.
 const SELECTION_SCROLLING_INTERVAL: Duration = Duration::from_millis(15);
@@ -98,11 +99,12 @@ pub trait ActionContext<T: EventListener> {
     fn create_new_window(&mut self, _tabbing_id: Option<String>) {}
     #[cfg(not(target_os = "macos"))]
     fn create_new_window(&mut self) {}
-    fn change_font_size(&mut self, _delta: i32) {}
+    fn change_font_size(&mut self, _delta: f32) {}
     fn reset_font_size(&mut self) {}
     fn pop_message(&mut self) {}
     fn message(&self) -> Option<&Message>;
     fn config(&self) -> &UiConfig;
+    #[cfg(target_os = "macos")]
     fn event_loop(&self) -> &EventLoopWindowTarget<Event>;
     fn mouse_mode(&self) -> bool;
     fn clipboard_mut(&mut self) -> &mut Clipboard;
@@ -410,7 +412,7 @@ impl<T: EventListener> Execute<T> for Action {
             Action::SelectTab9 => ctx.window().select_tab_at_index(8),
             #[cfg(target_os = "macos")]
             Action::SelectLastTab => ctx.window().select_last_tab(),
-            Action::ReceiveChar | Action::None => (),
+            _ => (),
         }
     }
 }
@@ -866,7 +868,7 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
             },
             TouchPurpose::Zoom(zoom) => {
                 let font_delta = zoom.font_delta(touch);
-                self.ctx.change_font_size(font_delta as i32);
+                self.ctx.change_font_size(font_delta);
             },
             TouchPurpose::Scroll(last_touch) => {
                 // Calculate delta and update last touch position.
@@ -1217,6 +1219,7 @@ mod tests {
             self.clipboard
         }
 
+        #[cfg(target_os = "macos")]
         fn event_loop(&self) -> &EventLoopWindowTarget<Event> {
             unimplemented!();
         }

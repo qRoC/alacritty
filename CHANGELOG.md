@@ -5,7 +5,67 @@ The sections should follow the order `Packaging`, `Added`, `Changed`, `Fixed` an
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## 0.13.0-dev
+## 0.14.0-dev
+
+### Packaging
+
+- Minimum Rust version has been bumped to 1.72.0
+
+### Added
+
+- Default `Home`/`End` bindings in Vi mode mapped to `First`/`Last` respectively
+
+### Fixed
+
+- CLI env variables clearing configuration file variables
+- Vi inline search/semantic selection expanding across newlines
+- C0 and C1 codes being emitted in associated text when using kitty keyboard
+- Occasional hang on startup with some Wayland compositors
+- Missing key for `NumpadDecimal` in key bindings
+- Scrolling content upwards moving lines into history when it shouldn't
+- Sticky keys not working sometimes on X11
+- Modifiers occasionally getting desynced on X11
+- Autokey no longer working with alacritty on X11
+- Freeze when moving window between monitors on Xfwm
+- Mouse cursor not changing on Wayland when cursor theme uses legacy cursor icon names
+- Config keys are available under proper names
+- Build failure when compiling with x11 feature on NetBSD
+
+### Changed
+
+- No unused-key warnings will be emitted for OS-specific config keys
+- Use built-in font for sextant symbols from `U+1FB00` to `U+1FB3B`
+- Kitty encoding is not used anymore for uncommon keys unless the protocol enabled
+
+## 0.13.1
+
+### Added
+
+- Support for pasting in Vi + Search mode
+
+### Changed
+
+- `alacritty migrate` will ignore null values in yaml instead of erroring out
+
+### Fixed
+
+- `alacritty migrate` failing with nonexistent imports
+- `Alt` bindings requiring composed key rather than pre-composed one on macOS
+- `Alt + Control` bindings not working on Windows
+- `chars = "\u000A"` action in bindings inserting `\n`
+- Alternate keys not sent for `Shift + <number>` when using kitty protocol
+- Alternative keys being swapped in kitty protocol implementation
+- Powerline glyphs being cut for narrow fonts
+- Xmodmap not working on X11
+- Occasional slow startup on some X11 window managers
+- Blurry window when using `window.dimensions` on some Wayland compositors
+- IME input lagging behind on X11
+- xdotool modifiers input not working correctly on X11
+- Parsing numbers fails for mouse bindings
+- Some config options overriding each other in CLI/IPC
+- Numpad `Left` used for numpad `Up`
+
+## 0.13.0
 
 ### Packaging
 
@@ -52,6 +112,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Default `bell.animation` is now `Linear`
 - `IncreaseFontSize/DecreaseFontSize` step is now 1px
 - `font.size` precision was raised to 6 floating point digits
+- Default font size to `11.25` matching 15px
+- `Xft.dpi` is now reloaded when xsettingd change its value on X11
 
 ### Fixed
 

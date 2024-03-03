@@ -165,7 +165,7 @@ impl Window {
 
         let window = window_builder
             .with_title(&identity.title)
-            .with_theme(config.window.decorations_theme_variant)
+            .with_theme(config.window.theme())
             .with_visible(false)
             .with_transparent(true)
             .with_blur(config.window.blur)
@@ -410,7 +410,10 @@ impl Window {
     }
 
     pub fn set_ime_allowed(&self, allowed: bool) {
-        self.window.set_ime_allowed(allowed);
+        // Skip runtime IME manipulation on X11 since it breaks some IMEs.
+        if !self.is_x11 {
+            self.window.set_ime_allowed(allowed);
+        }
     }
 
     /// Adjust the IME editor position according to the new location of the cursor.
